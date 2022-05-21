@@ -752,6 +752,7 @@ static RESULT WritePapFile(FILE *outFile)
    SEGMENT* pSeg = NULL;
    U32 papRecords = 0;
    RANGE* pRange;
+   U16 chkSum;
    U8* pData;
 
    /* Write each range. */
@@ -766,7 +767,6 @@ static RESULT WritePapFile(FILE *outFile)
       while (pRange->len)
       {
          U32 papRecLen;
-         U16 chkSum;
 
          /* Determine the length of the PAP record to write. */
          papRecLen = pRange->len < PAP_REC_LEN ? pRange->len : PAP_REC_LEN;
@@ -825,9 +825,10 @@ static RESULT WritePapFile(FILE *outFile)
    }
 
    /* Write the end record. */
+   chkSum = ((papRecords >> 8) & 0xFF) + (papRecords & 0xFF);
    if (fprintf(outFile, ";00%02X%02X%02X%02X\r\n\0\0\0\0\0\0",
       (papRecords >> 8) & 0xFF, papRecords & 0xFF,
-      (papRecords >> 8) & 0xFF, papRecords & 0xFF) < 0)
+      (chkSum >> 8) & 0xFF, chkSum & 0xFF) < 0)
    {
       printf("Error writing output file.\n");
       return IO_ERROR;
