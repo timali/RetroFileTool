@@ -404,7 +404,7 @@ static RESULT AddSegment(SEGMENT* pSeg)
       if ((segStart >= rangeStart && segStart <= rangeEnd) ||
          (segEnd >= rangeStart && segEnd <= rangeEnd))
       {
-         printf("A segment overlapps a previous segment.\n");
+         printf("ERROR: A segment overlaps a previous segment.\n");
          return OVERLAPPING_SEGMENT;
       }
 
@@ -438,7 +438,7 @@ static RESULT AddSegment(SEGMENT* pSeg)
    pRange = (RANGE*)malloc(sizeof(RANGE));
    if (pRange == NULL)
    {
-      printf("Out of memory.\n");
+      printf("ERROR: Out of memory.\n");
       return NO_MEMORY;
    }
 
@@ -473,10 +473,45 @@ static RESULT AddSegment(SEGMENT* pSeg)
 ******************************************************************************/
 static RESULT LoadBinFile(FILE* inFile, FILE_OPTS_BIN *pOpts)
 {
+   SEGMENT* pSeg;
+   long numBytes;
+   RESULT r;
+
    printf("a raw binary file, addr=0x%0X.\n", pOpts->startAddr);
 
-   printf("Currently not supported.\n");
-   return UNSUPPORTED;
+   /* Get the size of the binary file to load. */
+   fseek(inFile, 0, SEEK_END);
+   numBytes = ftell(inFile);
+
+   /* Seek back to the beginning. */
+   fseek(inFile, 0, SEEK_SET);
+
+   /* Allocate a new segment to hold the data. */
+   pSeg = (SEGMENT*)malloc(sizeof(SEGMENT) + numBytes);
+   if (pSeg == NULL)
+   {
+      return NO_MEMORY;
+   }
+
+   /* Set the segment's info. */
+   pSeg->addr = pOpts->startAddr;
+   pSeg->len = numBytes;
+
+   /* Read the data into the segment. */
+   if (!fread(pSeg->data, numBytes, 1, inFile))
+   {
+      printf("File read error.\n");
+      return IO_ERROR;
+   }
+
+   /* Add the new segment into our data structures. */
+   r = AddSegment(pSeg);
+   if (r != OK)
+   {
+      return r;
+   }
+
+   return OK;
 }
 
 /**************************************************************************//**
@@ -547,36 +582,36 @@ static RESULT LoadHexFile(FILE* inFile)
             pSeg = (SEGMENT*)malloc(sizeof(SEGMENT) + byteCount);
             if (pSeg == NULL)
             {
-                  printf("Out of memory.\n");
-                  return NO_MEMORY;
+               printf("Out of memory.\n");
+               return NO_MEMORY;
             }
 
             /* Set the segment's info depending on which addressing mode is used. */
             if (segAddr != 0)
             {
-                  pSeg->addr = (segAddr << 4) + addr16;
+               pSeg->addr = (segAddr << 4) + addr16;
             }
             else
             {
-                  pSeg->addr = (extAddr << 16) | addr16;
+               pSeg->addr = (extAddr << 16) | addr16;
             }
             pSeg->len = byteCount;
 
             /* Read the data into the segment. */
             for (i = 0; i < byteCount; i++)
             {
-                  r = LoadU8(inFile, &pSeg->data[i], &chkSumActual);
-                  if (r != OK)
-                  {
-                     return r;
-                  }
+               r = LoadU8(inFile, &pSeg->data[i], &chkSumActual);
+               if (r != OK)
+               {
+                  return r;
+               }
             }
 
             /* Add the new segment into our data structures. */
             r = AddSegment(pSeg);
             if (r != OK)
             {
-                  return r;
+               return r;
             }
 
             break;
@@ -594,7 +629,7 @@ static RESULT LoadHexFile(FILE* inFile)
             or extended linear addressing, but not both. */
             if (extAddr != 0)
             {
-                  printf("Both segment addressing and linear addressing used. Only one type or the other is supported.\n");
+                  printf("ERROR: Both segment addressing and linear addressing used. Only one type or the other is supported.\n");
                   return MIXED_ADDRESSING_MODES;
             }
 
@@ -615,14 +650,14 @@ static RESULT LoadHexFile(FILE* inFile)
             r = LoadU16(inFile, &startSeg, &chkSumActual);
             if (r != OK)
             {
-                  return r;
+               return r;
             }
 
             /* Read the 16-bit offset of the starting address with the segment. */
             r = LoadU16(inFile, &startOfs, &chkSumActual);
             if (r != OK)
             {
-                  return r;
+               return r;
             }
 
             /* Compute the 32-bit starting address using the segment and offset. */
@@ -636,15 +671,15 @@ static RESULT LoadHexFile(FILE* inFile)
             or extended linear addressing, but not both. */
             if (segAddr != 0)
             {
-                  printf("Both segment addressing and linear addressing used. Only one type or the other is supported.\n");
-                  return MIXED_ADDRESSING_MODES;
+               printf("ERROR: Both segment addressing and linear addressing used. Only one type or the other is supported.\n");
+               return MIXED_ADDRESSING_MODES;
             }
 
             /* Read the upper 16-bits of the address. */
             r = LoadU16(inFile, &extAddr, &chkSumActual);
             if (r != OK)
             {
-                  return r;
+               return r;
             }
             break;
          }
@@ -655,14 +690,14 @@ static RESULT LoadHexFile(FILE* inFile)
             r = LoadU32(inFile, &startAddr, &chkSumActual);
             if (r != OK)
             {
-                  return r;
+               return r;
             }
             break;
          }
 
          default:
          {
-            printf("Invalid record type: %i.\n", recType);
+            printf("ERROR: Invalid record type: %i.\n", recType);
             return INVALID_RECORD_TYPE;
          }
       }
@@ -677,7 +712,7 @@ static RESULT LoadHexFile(FILE* inFile)
       /* Validate the checksum. */
       if (((~chkSumActual + 1) & 0xFF) != chkSumFile)
       {
-         printf("Checksum error.\n");
+         printf("ERROR: Checksum error.\n");
          return CHECKSUM_ERROR;
       }
    }
@@ -685,7 +720,7 @@ static RESULT LoadHexFile(FILE* inFile)
    /* Make sure and end record was processed. */
    if (endRecordFound == 0)
    {
-      printf("No end record was found.\n");
+      printf("ERROR: No end record was found.\n");
       return END_RECORD_ERROR;
    }
 
