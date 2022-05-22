@@ -17,6 +17,7 @@ Utility for converting between various retro file formats.
 /** The maximum number of bytes in each PAP record. */
 #define PAP_REC_LEN                                               24
 
+/** The application version. */
 #define VER_STR                                                   "1.0"
 
 /******************************************************************************
@@ -59,6 +60,8 @@ typedef enum
    CHECKSUM_ERROR,
    NO_MEMORY,
    OVERLAPPING_SEGMENT,
+   ADDR_OUT_OF_RANGE,
+   LEN_OUT_OF_RANGE,
 
 } RESULT;
 
@@ -144,7 +147,7 @@ struct _RANGE_
 ******************************************************************************/
 
 /** All the ranges contained within the input files. */
-static RANGE*              pAllRanges = NULL;
+static RANGE               *pAllRanges = NULL;
 
 /** The number of contiguous ranges allocated so far. */
 static U16                 numRanges = 0;
@@ -380,7 +383,7 @@ static void CombineRanges(void)
 ******************************************************************************/
 static RESULT AddSegment(SEGMENT* pSeg)
 {
-   RANGE* pRange, * pTemp, ** ppPrev;
+   RANGE *pRange, *pTemp, **ppPrev;
    U32 segStart, segEnd, rangeStart, rangeEnd;
 
    if (pSeg->len == 0)
@@ -736,8 +739,91 @@ static RESULT LoadHexFile(FILE* inFile)
 ******************************************************************************/
 static RESULT WriteWdcFile(FILE *outFile)
 {
-   printf("WDC file output is currently not supported.\n");
-   return UNSUPPORTED;
+   SEGMENT *pSeg = NULL;
+   U8 outVal[3];
+   RANGE *pRange;
+
+   /* Write the header. */
+   if (fprintf(outFile, "Z") != 1)
+   {
+      printf("Error writing output file.\n");
+      return IO_ERROR;
+   }
+
+   /* Write each range. */
+   pRange = pAllRanges;
+   while (pRange)
+   {
+      /* Ensure the address is within the range we can output. */
+      if (pRange->addr >> 24)
+      {
+         printf("ERROR: Address out of range.\n");
+         return ADDR_OUT_OF_RANGE;
+      }
+
+      /* Write the address. */
+      outVal[2] = pRange->addr >> 16;
+      outVal[1] = pRange->addr >> 8;
+      outVal[0] = pRange->addr >> 0;
+      if (!fwrite(outVal, sizeof(outVal), 1, outFile))
+      {
+         printf("Error writing output file.\n");
+         return IO_ERROR;
+      }
+
+      /* Ensure the length is within the range we can output. */
+      if (pRange->len >> 24)
+      {
+         printf("ERROR: Length out of range.\n");
+         return LEN_OUT_OF_RANGE;
+      }
+
+      /* Write the length. */
+      outVal[2] = pRange->len >> 16;
+      outVal[1] = pRange->len >> 8;
+      outVal[0] = pRange->len >> 0;
+      if (!fwrite(outVal, sizeof(outVal), 1, outFile))
+      {
+         printf("Error writing output file.\n");
+         return IO_ERROR;
+      }
+
+      /* Set up the starting segment for this range. */
+      pSeg = pRange->pSegStart;
+
+      /* Write the data for seach segment in this range. */
+      while (pSeg)
+      {
+         if (!fwrite(pSeg->data, pSeg->len, 1, outFile))
+         {
+            printf("Error writing output file.\n");
+            return IO_ERROR;
+         }
+
+         /* Move to the next segment. */
+         pSeg = pSeg->pNext;
+      };
+
+      /* Move to the next range. */
+      pRange = pRange->pNext;
+   }
+
+   /* Write the end record -- an address and size of 0. */
+   memset(outVal, 0, sizeof(outVal));
+   if (!fwrite(outVal, sizeof(outVal), 1, outFile))
+   {
+      printf("Error writing output file.\n");
+      return IO_ERROR;
+   }
+
+   if (!fwrite(outVal, sizeof(outVal), 1, outFile))
+   {
+      printf("Error writing output file.\n");
+      return IO_ERROR;
+   }
+
+   printf("File written as WDC binary file.\n");
+   return OK;
 }
 
 /**************************************************************************//**
